@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mao.local/schemas/ws-envelope.v1.json",
+  "title": "MAO Client WebSocket Envelope v1",
+  "description": "Every client-to-server /ws message MUST match this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "type"],
+  "properties": {
+    "v": { "const": 1 },
+    "type": {
+      "type": "string",
+      "enum": ["EVENT", "SUBSCRIBE", "UNSUBSCRIBE", "PING"]
+    },
+    "request_id": { "type": "string", "format": "uuid" },
+    "data": { "type": "object" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "type": { "const": "EVENT" } },
+        "required": ["type"]
+      },
+      "then": {
+        "required": ["request_id", "data"],
+        "properties": {
+          "request_id": { "type": "string", "format": "uuid" },
+          "data": { "$ref": "https://mao.local/schemas/event.v1.json" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "SUBSCRIBE" } },
+        "required": ["type"]
+      },
+      "then": {
+        "required": ["request_id", "data"],
+        "properties": {
+          "request_id": { "type": "string", "format": "uuid" },
+          "data": { "$ref": "#/$defs/Subscription" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "UNSUBSCRIBE" } },
+        "required": ["type"]
+      },
+      "then": {
+        "required": ["request_id", "data"],
+        "properties": {
+          "request_id": { "type": "string", "format": "uuid" },
+          "data": { "$ref": "#/$defs/Subscription" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "PING" } },
+        "required": ["type"]
+      },
+      "then": {
+        "not": { "required": ["data"] }
+      }
+    }
+  ],
+  "$defs": {
+    "EventType": {
+      "type": "string",
+      "enum": [
+        "TASK_CREATED",
+        "TASK_UPDATED",
+        "AGENT_MESSAGE",
+        "SYSTEM_COMMAND",
+        "ERROR"
+      ]
+    },
+    "Subscription": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["event_types"],
+      "properties": {
+        "event_types": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "oneOf": [
+              { "const": "*" },
+              { "$ref": "#/$defs/EventType" }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

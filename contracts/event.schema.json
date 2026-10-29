@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mao.local/schemas/event.v1.json",
+  "title": "MAO Event v1",
+  "description": "Canonical event envelope persisted in agent_events and exchanged over /ws.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "timestamp",
+    "sender_id",
+    "event_type",
+    "payload",
+    "correlation_id"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Globally unique event identifier and idempotency key."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Client-generated RFC3339 timestamp. received_at is authoritative on the server."
+    },
+    "sender_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
+      "description": "Stable identifier of the producing agent or service."
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "TASK_CREATED",
+        "TASK_UPDATED",
+        "AGENT_MESSAGE",
+        "SYSTEM_COMMAND",
+        "ERROR"
+      ]
+    },
+    "payload": {
+      "type": "object",
+      "description": "Type-specific payload. Object shape is enforced by the event_type conditional below."
+    },
+    "correlation_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Trace identifier shared by all events in one business flow."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "event_type": { "const": "TASK_CREATED" } },
+        "required": ["event_type"]
+      },
+      "then": {
+        "properties": { "payload": { "$ref": "#/$defs/TaskCreatedPayload" } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "event_type": { "const": "TASK_UPDATED" } },
+        "required": ["event_type"]
+      },
+      "then": {
+        "properties": { "payload": { "$ref": "#/$defs/TaskUpdatedPayload" } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "event_type": { "const": "AGENT_MESSAGE" } },
+        "required": ["event_type"]
+      },
+      "then": {
+        "properties": { "payload": { "$ref": "#/$defs/AgentMessagePayload" } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "event_type": { "const": "SYSTEM_COMMAND" } },
+        "required": ["event_type"]
+      },
+      "then": {
+        "properties": { "payload": { "$ref": "#/$defs/SystemCommandPayload" } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "event_type": { "const": "ERROR" } },
+        "required": ["event_type"]
+      },
+      "then": {
+        "properties": { "payload": { "$ref": "#/$defs/ErrorPayload" } }
+      }
+    }
+  ],
+  "$defs": {
+    "TaskCreatedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task_id", "title", "created_by"],
+      "properties": {
+        "task_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "created_by": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "action": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"
+        },
+        "data": { "type": "object" },
+        "priority": {
+          "type": "string",
+          "enum": ["LOW", "NORMAL", "HIGH", "CRITICAL"]
+        },
+        "deadline": { "type": "string", "format": "date-time" }
+      }
+    },
+    "TaskUpdatedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task_id", "changes"],
+      "properties": {
+        "task_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "status": {
+          "type": "string",
+          "enum": ["PENDING", "IN_PROGRESS", "BLOCKED", "COMPLETED", "FAILED"]
+        },
+        "changes": {
+          "type": "object",
+          "minProperties": 1,
+          "description": "Partial state changes keyed by field name."
+        }
+      }
+    },
+    "AgentMessagePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["message_id", "content"],
+      "properties": {
+        "message_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "content": { "type": "string", "minLength": 1, "maxLength": 32768 },
+        "content_type": {
+          "type": "string",
+          "enum": ["text/plain", "text/markdown", "application/json"]
+        },
+        "recipient_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "metadata": { "type": "object" }
+      }
+    },
+    "SystemCommandPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command"],
+      "properties": {
+        "command": {
+          "type": "string",
+          "enum": ["START", "STOP", "PAUSE", "RESUME", "RELOAD_CONFIG"]
+        },
+        "target_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "parameters": { "type": "object" }
+      }
+    },
+    "ErrorPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "severity"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+        },
+        "message": { "type": "string", "minLength": 1, "maxLength": 2048 },
+        "severity": {
+          "type": "string",
+          "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+        },
+        "details": { "type": "object" }
+      }
+    }
+  }
+}

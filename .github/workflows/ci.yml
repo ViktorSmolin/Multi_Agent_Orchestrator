@@ -1,0 +1,150 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    name: Agent unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install vendored dependencies
+        run: >
+          pip install
+          --no-index
+          --find-links=agents/task_executor/vendor/wheels
+          --require-hashes
+          -r agents/task_executor/requirements.lock
+
+      - name: Run unit tests
+        working-directory: agents/task_executor
+        run: python -m unittest discover -s tests -v
+
+  contract-checks:
+    name: Compose and script checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Validate shell syntax
+        run: sh -n scripts/verify_stack.sh
+
+      - name: Validate JavaScript syntax
+        run: |
+          for file in core-engine/src/*.js; do
+            node --check "$file"
+          done
+          node --check scripts/autoheal.js
+
+      - name: Validate Prometheus config
+        run: >
+          docker run --rm
+          --entrypoint promtool
+          --volume "$PWD/observability:/etc/prometheus:ro"
+          prom/prometheus:v2.55.1
+          check config /etc/prometheus/prometheus.yml
+
+      - name: Prepare env
+        run: cp .env.example .env
+
+      - name: Validate compose file
+        run: docker compose config --quiet
+
+      - name: Confirm clean-machine build path
+        run: |
+          docker compose config --format json \
+            | jq -e '.services["engine-1"].build.dockerfile == "core-engine/Dockerfile"'
+          docker compose config --format json \
+            | jq -e '.services["engine-2"].build.dockerfile == "core-engine/Dockerfile"'
+          docker compose config --format json \
+            | jq -e '.services["engine-1"].environment.ENGINE_DOCKERFILE == "Dockerfile"'
+
+  multiarch:
+    name: Multi-arch images
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs:
+      - contract-checks
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build arm64 engine
+        run: >
+          docker buildx build
+          --platform linux/arm64
+          --provenance=false
+          --file core-engine/Dockerfile
+          --tag mao-engine:arm64
+          --load .
+
+      - name: Build arm64 agent
+        run: >
+          docker buildx build
+          --platform linux/arm64
+          --provenance=false
+          --file agents/task_executor/Dockerfile
+          --tag mao-task-executor:arm64
+          --load .
+
+  integration:
+    name: Stack E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs:
+      - unit-tests
+      - contract-checks
+      - multiarch
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          password="$(openssl rand -hex 24)"
+          api_key="$(openssl rand -hex 24)"
+          sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=${password}/" .env
+          sed -i "s/^MAO_API_KEY=.*/MAO_API_KEY=${api_key}/" .env
+          grep -q '^ENGINE_DOCKERFILE=Dockerfile$' .env
+
+      - name: Verify stack
+        run: sh scripts/verify_stack.sh
+
+      - name: Show container status
+        if: failure()
+        run: docker compose ps -a
+
+      - name: Show logs
+        if: failure()
+        run: docker compose logs --no-color --tail=300
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down -v --remove-orphans

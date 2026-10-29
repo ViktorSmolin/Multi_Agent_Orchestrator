@@ -1,0 +1,38 @@
+groups:
+  - name: mao
+    rules:
+      - alert: MaoEngineDown
+        expr: up{job="mao-engine"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MAO engine {{ $labels.instance }} is down"
+          description: "Prometheus cannot scrape the engine for more than one minute."
+
+      - alert: MaoTaskBacklog
+        expr: mao_task_stream_length > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MAO task stream backlog is growing"
+          description: "The Redis task stream holds more than 1000 entries."
+
+      - alert: MaoHighRejectionRate
+        expr: rate(mao_events_rejected_total[5m]) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MAO rejects more than one event per second"
+          description: "Check clients, protocol versions, and payload schemas."
+
+      - alert: MaoHighDuplicateRate
+        expr: rate(mao_events_total{result="duplicate"}[5m]) > 5
+        for: 5m
+        labels:
+          severity: info
+        annotations:
+          summary: "MAO sees a high duplicate event rate"
+          description: "Clients may be retrying after a timeout or reconnect."

@@ -1,0 +1,26 @@
+FROM node:20-alpine
+
+ENV NODE_ENV=production
+
+WORKDIR /app
+
+COPY core-engine/package.json core-engine/package-lock.json ./
+COPY core-engine/vendor/SHA256SUMS core-engine/vendor/node_modules.tar.gz /tmp/
+
+RUN cd /tmp \
+    && sha256sum -c SHA256SUMS \
+    && mkdir -p /app/node_modules \
+    && tar -xzf node_modules.tar.gz -C /app \
+    && rm node_modules.tar.gz SHA256SUMS
+
+COPY core-engine/src ./src
+COPY contracts ./contracts
+COPY db/migrations ./migrations
+
+RUN npm ls --omit=dev --depth=0
+
+USER node
+
+EXPOSE 8090
+
+CMD ["node", "src/server.js"]

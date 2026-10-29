@@ -1,0 +1,12 @@
+.git
+.env
+.env.*
+Layer_*.md
+protocol-spec.md
+db/init
+core-engine/npm-debug.log
+core-engine/node_modules
+**/__pycache__
+.venv
+agents/task_executor/.env
+agents/task_executor/state

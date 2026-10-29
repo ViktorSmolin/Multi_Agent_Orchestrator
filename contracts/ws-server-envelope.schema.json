@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mao.local/schemas/ws-server-envelope.v1.json",
+  "title": "MAO Server WebSocket Envelope v1",
+  "description": "Every server-to-client /ws message MUST match this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "type"],
+  "properties": {
+    "v": { "const": 1 },
+    "type": {
+      "type": "string",
+      "enum": ["WELCOME", "ACK", "PONG", "ERROR", "EVENT"]
+    },
+    "request_id": { "type": "string", "format": "uuid" },
+    "sequence_id": { "type": "integer", "minimum": 1 },
+    "data": { "type": "object" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "type": { "const": "WELCOME" } },
+        "required": ["type"]
+      },
+      "then": {
+        "required": ["data"],
+        "properties": { "data": { "$ref": "#/$defs/Welcome" } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "ACK" } },
+        "required": ["type"]
+      },
+      "then": {
+        "required": ["request_id", "data"],
+        "properties": { "data": { "$ref": "#/$defs/Ack" } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "PONG" } },
+        "required": ["type"]
+      },
+      "then": {
+        "required": ["data"],
+        "properties": { "data": { "$ref": "#/$defs/Pong" } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "ERROR" } },
+        "required": ["type"]
+      },
+      "then": {
+        "required": ["data"],
+        "properties": { "data": { "$ref": "#/$defs/Error" } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "EVENT" } },
+        "required": ["type"]
+      },
+      "then": {
+        "required": ["data"],
+        "properties": {
+          "data": { "$ref": "https://mao.local/schemas/event.v1.json" }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "Welcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "connection_id",
+        "protocol_version",
+        "heartbeat_interval_ms",
+        "heartbeat_timeout_ms",
+        "max_payload_bytes",
+        "event_types",
+        "subscriptions",
+        "server_time"
+      ],
+      "properties": {
+        "connection_id": { "type": "string", "format": "uuid" },
+        "protocol_version": { "const": 1 },
+        "heartbeat_interval_ms": { "type": "integer", "minimum": 1000 },
+        "heartbeat_timeout_ms": { "type": "integer", "minimum": 2000 },
+        "max_payload_bytes": { "type": "integer", "minimum": 1024 },
+        "event_types": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "subscriptions": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "server_time": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Ack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["accepted", "duplicate"]
+        },
+        "event_id": { "type": "string", "format": "uuid" },
+        "sequence_id": { "type": "integer", "minimum": 1 },
+        "duplicate": { "type": "boolean" },
+        "subscriptions": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "Pong": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["server_time"],
+      "properties": {
+        "server_time": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "INVALID_JSON",
+            "VALIDATION_ERROR",
+            "UNSUPPORTED_PROTOCOL_VERSION",
+            "INTERNAL_ERROR",
+            "RATE_LIMITED"
+          ]
+        },
+        "message": { "type": "string", "minLength": 1, "maxLength": 2048 },
+        "details": {
+          "type": "array",
+          "items": { "type": "object" }
+        }
+      }
+    }
+  }
+}
