@@ -8,3 +8,4 @@ __pycache__/
 agents/task_executor/.env
 agents/task_executor/state/
 *.log
+.mao/memory/*.lock
