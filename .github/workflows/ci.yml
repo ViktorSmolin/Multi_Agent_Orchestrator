@@ -59,6 +59,11 @@ jobs:
             node --check "$file"
           done
           node --check scripts/autoheal.js
+          node --check .mao/memory/store.js
+          node --check .mao/memory/cli.js
+
+      - name: Memory unit tests
+        run: node --test .mao/memory/tests/store.test.js
 
       - name: Validate Prometheus config
         run: >

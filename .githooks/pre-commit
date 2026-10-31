@@ -1,0 +1,41 @@
+#!/bin/sh
+# MAO pre-commit: не пускаем секреты в историю.
+# Включение на клон (один раз): git config core.hooksPath .githooks
+# Проверка вручную: sh .githooks/pre-commit
+
+set -eu
+
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+
+if [ -z "$staged" ]; then
+  exit 0
+fi
+
+blocked=$(printf '%s\n' "$staged" | grep -Ei \
+  '(^|/)\.env$|(^|/)\.env\.(local|dev|prod|production|test)$|\.(pem|key|p12|pfx|jks)$|(^|/)id_(rsa|dsa|ecdsa|ed25519)$' \
+  || true)
+
+if [ -n "$blocked" ]; then
+  echo "commit blocked: секреты или ключи попали в индекс:" >&2
+  printf '%s\n' "$blocked" >&2
+  echo "убери из индекса: git restore --staged <file>" >&2
+  exit 1
+fi
+
+added=$(git diff --cached --unified=0 --diff-filter=ACM | grep -E '^\+' | grep -Ev '^\+\+\+' || true)
+
+if [ -n "$added" ]; then
+  leaks=$(printf '%s\n' "$added" | grep -Ein \
+    '([a-z0-9_]*(api[_-]?key|secret|passwd|password|token)[a-z0-9_]*)["'"'"']?[[:space:]]*[:=][[:space:]]*["'"'"']?[A-Za-z0-9/+_.-]{16,}' \
+    | grep -vEi 'replace-with|example|placeholder|your[-_]|\$\{|<[^>]+>' \
+    || true)
+
+  if [ -n "$leaks" ]; then
+    echo "commit blocked: похоже на секрет в добавленных строках:" >&2
+    printf '%s\n' "$leaks" >&2
+    echo "ложное срабатывание? добавь маркер example / placeholder / replace-with" >&2
+    exit 1
+  fi
+fi
+
+exit 0
